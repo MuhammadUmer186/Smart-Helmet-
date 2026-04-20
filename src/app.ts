@@ -54,19 +54,22 @@ app.use(
 app.use(env.API_PREFIX, globalRateLimiter);
 
 // ── Swagger docs ──────────────────────────────
-app.use(
-  "/docs",
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec, {
-    customSiteTitle: "Smart Helmet API Docs",
-    swaggerOptions: { persistAuthorization: true },
-  })
-);
-
 app.get("/docs.json", (_req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.send(swaggerSpec);
 });
+
+app.use(
+  "/docs",
+  swaggerUi.serve,
+  swaggerUi.setup(undefined, {
+    customSiteTitle: "Smart Helmet API Docs",
+    swaggerOptions: {
+      url: "/docs.json",
+      persistAuthorization: true,
+    },
+  })
+);
 
 // ── Routes ────────────────────────────────────
 app.use(env.API_PREFIX, routes);
