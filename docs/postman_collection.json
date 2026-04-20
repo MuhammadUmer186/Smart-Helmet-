@@ -1,0 +1,466 @@
+{
+  "info": {
+    "_postman_id": "smart-helmet-api-v1",
+    "name": "Smart Helmet IoT Backend API",
+    "description": "Complete REST API collection for Smart Helmet + Bike Safety IoT System.\n\n**Setup:**\n1. Set `baseUrl` variable to `http://localhost:3000/api`\n2. Run Admin Login to auto-set `adminToken`\n3. Run Device Auth to auto-set `deviceToken`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "adminToken", "value": "" },
+    { "key": "deviceToken", "value": "" },
+    { "key": "deviceId", "value": "MAIN-DEMO-001" },
+    { "key": "deviceSecret", "value": "demo_secret_key_change_in_production_32chars" },
+    { "key": "mainDeviceDbId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health",
+            "description": "Verify the server is running"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.success && json.data && json.data.token) {",
+                  "  pm.collectionVariables.set('adminToken', json.data.token);",
+                  "  console.log('Admin token saved');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@smarthelmet.local\",\n  \"password\": \"Admin@12345\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/auth/me",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Devices",
+      "item": [
+        {
+          "name": "Register Main Device",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.success && json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('mainDeviceDbId', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/devices/main",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_id\": \"MAIN-NEW-001\",\n  \"name\": \"Bike Unit Alpha\",\n  \"firmware_version\": \"1.0.0\",\n  \"sim_number\": \"+923001234567\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Main Devices",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/admin/devices/main?page=1&limit=20",
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        },
+        {
+          "name": "Get Main Device",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/devices/main/{{mainDeviceDbId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        },
+        {
+          "name": "Update Main Device",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/devices/main/{{mainDeviceDbId}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Bike Unit\",\n  \"status\": \"ACTIVE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Rotate Device Secret",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/devices/main/{{mainDeviceDbId}}/rotate-secret",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        },
+        {
+          "name": "Update Device Config",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/devices/main/{{mainDeviceDbId}}/config",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"relay_enabled\": true,\n  \"heartbeat_interval_sec\": 30,\n  \"telemetry_interval_sec\": 60,\n  \"low_battery_threshold_main\": 15,\n  \"low_battery_threshold_helmet\": 15,\n  \"emergency_sms_enabled\": true,\n  \"emergency_backend_enabled\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Register Helmet Device",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/devices/helmet",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"helmet_id\": \"HELM-NEW-001\",\n  \"name\": \"Helmet Unit Alpha\",\n  \"firmware_version\": \"1.0.0\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Helmet Devices",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/devices/helmet",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        },
+        {
+          "name": "Pair Devices",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/devices/pair",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"main_device_id\": \"<UUID of main device>\",\n  \"helmet_device_id\": \"<UUID of helmet device>\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Contacts",
+      "item": [
+        {
+          "name": "Create Emergency Contact",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/contacts",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_id\": \"{{mainDeviceDbId}}\",\n  \"name\": \"Ahmed Ali\",\n  \"phone_number\": \"+923009876543\",\n  \"is_primary\": true,\n  \"is_active\": true,\n  \"notes\": \"Father\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Contacts for Device",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/contacts/device/{{mainDeviceDbId}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        },
+        {
+          "name": "Update Contact",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/contacts/<contactId>",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_primary\": true,\n  \"is_active\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Contact",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/admin/contacts/<contactId>",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Dashboard",
+      "item": [
+        {
+          "name": "Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/dashboard/summary",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        },
+        {
+          "name": "Device Statuses",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/dashboard/device-statuses",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        },
+        {
+          "name": "Map Locations",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/dashboard/map",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Telemetry",
+      "item": [
+        {
+          "name": "List Telemetry",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/admin/telemetry?page=1&limit=20",
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "device_id", "value": "", "disabled": true },
+                { "key": "event_type", "value": "heartbeat", "disabled": true },
+                { "key": "from", "value": "2024-01-01T00:00:00Z", "disabled": true },
+                { "key": "to", "value": "2024-12-31T23:59:59Z", "disabled": true }
+              ]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        },
+        {
+          "name": "Latest Telemetry for Device",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/telemetry/device/{{mainDeviceDbId}}/latest",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        },
+        {
+          "name": "List Events",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/admin/telemetry/events?page=1&limit=20",
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Device — Auth",
+      "item": [
+        {
+          "name": "Device Auth (get JWT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.success && json.data && json.data.token) {",
+                  "  pm.collectionVariables.set('deviceToken', json.data.token);",
+                  "  console.log('Device token saved');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/device/auth",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_id\": \"MAIN-DEMO-001\",\n  \"secret_key\": \"demo_secret_key_change_in_production_32chars\"\n}"
+            },
+            "description": "Authenticate device and receive a 24h JWT. Alternatively, use x-device-id + x-device-secret headers on every request."
+          }
+        },
+        {
+          "name": "Get Device Config",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/device/config/MAIN-DEMO-001",
+            "header": [
+              { "key": "x-device-id", "value": "{{deviceId}}" },
+              { "key": "x-device-secret", "value": "{{deviceSecret}}" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Device — Data",
+      "item": [
+        {
+          "name": "Get Primary Emergency Contact",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/device/MAIN-DEMO-001/contact",
+            "header": [
+              { "key": "x-device-id", "value": "{{deviceId}}" },
+              { "key": "x-device-secret", "value": "{{deviceSecret}}" }
+            ],
+            "description": "Optimized for embedded clients — returns minimal payload for SMS dispatch"
+          }
+        },
+        {
+          "name": "Submit Telemetry",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/device/telemetry",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-device-id", "value": "{{deviceId}}" },
+              { "key": "x-device-secret", "value": "{{deviceSecret}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"helmet_id\": \"HELM-DEMO-001\",\n  \"helmet_worn\": true,\n  \"relay_state\": true,\n  \"helmet_battery_percent\": 87,\n  \"helmet_battery_voltage\": 3.92,\n  \"main_battery_percent\": 73,\n  \"main_battery_voltage\": 3.85,\n  \"latitude\": 31.5204,\n  \"longitude\": 74.3587,\n  \"speed_kmph\": 35.2,\n  \"gps_valid\": true,\n  \"signal_strength\": -73,\n  \"event_type\": \"heartbeat\",\n  \"event_message\": \"Periodic telemetry\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit Event — Emergency Button",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/device/event",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-device-id", "value": "{{deviceId}}" },
+              { "key": "x-device-secret", "value": "{{deviceSecret}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"helmet_id\": \"HELM-DEMO-001\",\n  \"event_type\": \"emergency_button\",\n  \"event_message\": \"SOS button pressed by rider\",\n  \"metadata\": {\n    \"lat\": 31.5204,\n    \"lng\": 74.3587\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit Event — Accident Confirmed",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/device/event",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-device-id", "value": "{{deviceId}}" },
+              { "key": "x-device-secret", "value": "{{deviceSecret}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"accident_confirmed\",\n  \"event_message\": \"Accelerometer threshold exceeded\",\n  \"metadata\": { \"g_force\": 12.4 }\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit Location",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/device/location",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-device-id", "value": "{{deviceId}}" },
+              { "key": "x-device-secret", "value": "{{deviceSecret}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 31.5210,\n  \"longitude\": 74.3595,\n  \"speed_kmph\": 28.0,\n  \"gps_valid\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit Heartbeat",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/device/heartbeat",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-device-id", "value": "{{deviceId}}" },
+              { "key": "x-device-secret", "value": "{{deviceSecret}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"helmet_id\": \"HELM-DEMO-001\",\n  \"helmet_worn\": true,\n  \"helmet_battery_percent\": 86,\n  \"main_battery_percent\": 72,\n  \"relay_state\": true,\n  \"signal_strength\": -75,\n  \"firmware_version\": \"1.0.0\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

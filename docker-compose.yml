@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: smart_helmet_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-helmet_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helmet_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-smart_helmet_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-helmet_user} -d ${POSTGRES_DB:-smart_helmet_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - helmet_net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart_helmet_app
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_PREFIX: /api
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-helmet_user}:${POSTGRES_PASSWORD:-helmet_pass}@postgres:5432/${POSTGRES_DB:-smart_helmet_db}?schema=public"
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      DEVICE_TOKEN_SECRET: ${DEVICE_TOKEN_SECRET}
+      DEVICE_TOKEN_EXPIRES_IN: ${DEVICE_TOKEN_EXPIRES_IN:-24h}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      DEVICE_RATE_LIMIT_MAX: ${DEVICE_RATE_LIMIT_MAX:-500}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - helmet_net
+
+networks:
+  helmet_net:
+    driver: bridge
+
+volumes:
+  postgres_data:

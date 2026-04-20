@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  password     String
+  name         String
+  role         String   @default("admin")
+  is_active    Boolean  @default(true)
+  last_login   DateTime?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@map("admin_users")
+}
+
+model MainDevice {
+  id                 String          @id @default(uuid())
+  device_id          String          @unique
+  secret_key         String
+  name               String
+  firmware_version   String?
+  sim_number         String?
+  status             DeviceStatus    @default(ACTIVE)
+  last_seen          DateTime?
+  created_at         DateTime        @default(now())
+  updated_at         DateTime        @updatedAt
+
+  pairing            DevicePairing?
+  contacts           EmergencyContact[]
+  telemetry          Telemetry[]
+  events             DeviceEvent[]
+  config             DeviceConfig?
+
+  @@map("main_devices")
+}
+
+model HelmetDevice {
+  id               String        @id @default(uuid())
+  helmet_id        String        @unique
+  name             String
+  firmware_version String?
+  status           DeviceStatus  @default(ACTIVE)
+  last_seen        DateTime?
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+
+  pairing          DevicePairing?
+
+  @@map("helmet_devices")
+}
+
+model DevicePairing {
+  id             String       @id @default(uuid())
+  main_device_id String       @unique
+  helmet_id      String       @unique
+  is_active      Boolean      @default(true)
+  paired_at      DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+
+  main_device    MainDevice   @relation(fields: [main_device_id], references: [id], onDelete: Cascade)
+  helmet_device  HelmetDevice @relation(fields: [helmet_id], references: [id], onDelete: Cascade)
+
+  @@map("device_pairings")
+}
+
+model EmergencyContact {
+  id             String     @id @default(uuid())
+  device_id      String
+  name           String
+  phone_number   String
+  is_primary     Boolean    @default(false)
+  is_active      Boolean    @default(true)
+  notes          String?
+  created_at     DateTime   @default(now())
+  updated_at     DateTime   @updatedAt
+
+  main_device    MainDevice @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@map("emergency_contacts")
+}
+
+model Telemetry {
+  id                      String    @id @default(uuid())
+  device_id               String
+  helmet_id               String?
+  timestamp               DateTime  @default(now())
+
+  helmet_worn             Boolean?
+  relay_state             Boolean?
+
+  helmet_battery_percent  Float?
+  helmet_battery_voltage  Float?
+  main_battery_percent    Float?
+  main_battery_voltage    Float?
+
+  latitude                Float?
+  longitude               Float?
+  speed_kmph              Float?
+  gps_valid               Boolean?
+
+  signal_strength         Int?
+
+  event_type              EventType?
+  event_message           String?
+
+  raw_payload             Json?
+
+  main_device             MainDevice @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@index([device_id, timestamp(sort: Desc)])
+  @@index([timestamp(sort: Desc)])
+  @@map("telemetry")
+}
+
+model DeviceEvent {
+  id            String     @id @default(uuid())
+  device_id     String
+  helmet_id     String?
+  event_type    EventType
+  event_message String?
+  severity      Severity   @default(INFO)
+  metadata      Json?
+  timestamp     DateTime   @default(now())
+
+  main_device   MainDevice @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@index([device_id, timestamp(sort: Desc)])
+  @@index([event_type, timestamp(sort: Desc)])
+  @@map("device_events")
+}
+
+model DeviceConfig {
+  id                           String     @id @default(uuid())
+  device_id                    String     @unique
+  relay_enabled                Boolean    @default(true)
+  heartbeat_interval_sec       Int        @default(30)
+  telemetry_interval_sec       Int        @default(60)
+  low_battery_threshold_main   Int        @default(20)
+  low_battery_threshold_helmet Int        @default(20)
+  emergency_sms_enabled        Boolean    @default(true)
+  emergency_backend_enabled    Boolean    @default(true)
+  created_at                   DateTime   @default(now())
+  updated_at                   DateTime   @updatedAt
+
+  main_device                  MainDevice @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@map("device_configs")
+}
+
+enum DeviceStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum EventType {
+  heartbeat
+  helmet_status_changed
+  relay_on
+  relay_off
+  emergency_button
+  emergency_sms_sent
+  low_battery_main
+  low_battery_helmet
+  accident_suspected
+  accident_confirmed
+  gps_fix_lost
+  gps_fix_restored
+}
+
+enum Severity {
+  INFO
+  WARNING
+  CRITICAL
+}
