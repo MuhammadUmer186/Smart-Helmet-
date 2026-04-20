@@ -3,7 +3,6 @@ import helmet from "helmet";
 import cors from "cors";
 import compression from "compression";
 import morgan from "morgan";
-import swaggerUi from "swagger-ui-express";
 
 import { env } from "./config/env";
 import { swaggerSpec } from "./config/swagger";
@@ -17,8 +16,8 @@ const app = express();
 // ── Security ──────────────────────────────────
 app.use(
   helmet({
-    contentSecurityPolicy: env.isProduction,
-    crossOriginEmbedderPolicy: env.isProduction,
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
   })
 );
 
@@ -59,17 +58,35 @@ app.get("/docs.json", (_req, res) => {
   res.send(swaggerSpec);
 });
 
-app.use(
-  "/docs",
-  swaggerUi.serve,
-  swaggerUi.setup(undefined, {
-    customSiteTitle: "Smart Helmet API Docs",
-    swaggerOptions: {
-      url: "/docs.json",
-      persistAuthorization: true,
-    },
-  })
-);
+app.get("/docs", (_req, res) => {
+  res.setHeader("Content-Type", "text/html");
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart Helmet API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function () {
+      SwaggerUIBundle({
+        url: "/docs.json",
+        dom_id: "#swagger-ui",
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: "StandaloneLayout",
+        persistAuthorization: true,
+        deepLinking: true,
+      });
+    };
+  </script>
+</body>
+</html>`);
+});
 
 // ── Routes ────────────────────────────────────
 app.use(env.API_PREFIX, routes);
