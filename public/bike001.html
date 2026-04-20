@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BIKE-001 Setup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 36px; width: 100%; max-width: 420px; }
+    h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
+    .sub { font-size: 0.82rem; color: #64748b; margin-bottom: 28px; }
+    label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 6px; }
+    input { width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #f1f5f9; font-size: 0.95rem; outline: none; margin-bottom: 16px; }
+    input:focus { border-color: #6366f1; }
+    button { width: 100%; padding: 12px; background: #16a34a; color: #fff; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .msg { margin-top: 14px; font-size: 0.83rem; text-align: center; min-height: 20px; }
+    .msg.ok  { color: #4ade80; }
+    .msg.err { color: #f87171; }
+    .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 22px; padding: 10px 14px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; font-size: 0.83rem; color: #94a3b8; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; flex-shrink: 0; }
+    .dot.ok { background: #22c55e; }
+    .dot.err { background: #ef4444; }
+    .section-title { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+    hr { border: none; border-top: 1px solid #334155; margin: 20px 0; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>BIKE-001 Setup</h1>
+  <p class="sub">Set emergency contact — ESP32 will fetch it automatically</p>
+
+  <div id="status-row" class="status-row">
+    <div id="dot" class="dot"></div>
+    <span id="status-text">Checking device…</span>
+  </div>
+
+  <!-- Login section (hidden once logged in) -->
+  <div id="login-section">
+    <div class="section-title">Admin Login</div>
+    <label>Email</label>
+    <input id="email" type="email" placeholder="admin@example.com" />
+    <label>Password</label>
+    <input id="password" type="password" placeholder="••••••••" />
+    <button id="login-btn" onclick="doLogin()">Login</button>
+    <div id="login-msg" class="msg"></div>
+  </div>
+
+  <!-- Contact section (shown once logged in) -->
+  <div id="contact-section" style="display:none">
+    <hr />
+    <div class="section-title">Emergency Contact</div>
+    <label>Name</label>
+    <input id="c-name" type="text" placeholder="e.g. Dad" />
+    <label>Phone Number</label>
+    <input id="c-phone" type="tel" placeholder="+923001234567" />
+    <button id="save-btn" onclick="saveContact()">Save Contact</button>
+    <div id="contact-msg" class="msg"></div>
+  </div>
+</div>
+
+<script>
+  const API = '/api';
+  let token = localStorage.getItem('bike001_token');
+  let deviceUUID = null;
+  let existingContactId = null;
+
+  async function api(method, path, body) {
+    const res = await fetch(API + path, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || 'Request failed');
+    return json;
+  }
+
+  function setStatus(text, ok) {
+    document.getElementById('status-text').textContent = text;
+    const dot = document.getElementById('dot');
+    dot.className = 'dot' + (ok === true ? ' ok' : ok === false ? ' err' : '');
+  }
+
+  async function init() {
+    if (!token) { setStatus('Not logged in', null); return; }
+    try {
+      const data = await api('GET', '/admin/devices/main');
+      const devices = data.data || [];
+      const dev = devices.find(d => d.device_id === 'BIKE-001');
+      if (!dev) {
+        setStatus('BIKE-001 not registered yet', false);
+        showContact();
+        return;
+      }
+      deviceUUID = dev.id;
+      setStatus('BIKE-001 found ✓', true);
+      showContact();
+      await loadContact();
+    } catch (e) {
+      setStatus('Error: ' + e.message, false);
+      if (e.message.toLowerCase().includes('unauthorized') || e.message.toLowerCase().includes('token')) {
+        token = null;
+        localStorage.removeItem('bike001_token');
+      }
+    }
+  }
+
+  function showContact() {
+    document.getElementById('login-section').style.display = 'none';
+    document.getElementById('contact-section').style.display = 'block';
+  }
+
+  async function loadContact() {
+    if (!deviceUUID) return;
+    try {
+      const data = await api('GET', '/admin/contacts/device/' + deviceUUID);
+      const contacts = data.data || [];
+      if (contacts.length > 0) {
+        const c = contacts.find(x => x.is_primary) || contacts[0];
+        existingContactId = c.id;
+        document.getElementById('c-name').value = c.name || '';
+        document.getElementById('c-phone').value = c.phone_number || '';
+        document.getElementById('contact-msg').textContent = 'Current contact loaded.';
+        document.getElementById('contact-msg').className = 'msg ok';
+      }
+    } catch {}
+  }
+
+  async function doLogin() {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('login-btn');
+    const msg = document.getElementById('login-msg');
+    if (!email || !password) { msg.textContent = 'Enter email and password.'; msg.className = 'msg err'; return; }
+    btn.disabled = true; btn.textContent = 'Logging in…';
+    try {
+      const data = await api('POST', '/admin/auth/login', { email, password });
+      token = data.data?.token || data.token;
+      localStorage.setItem('bike001_token', token);
+      msg.textContent = '';
+      await registerAndInit();
+    } catch (e) {
+      msg.textContent = e.message;
+      msg.className = 'msg err';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Login';
+    }
+  }
+
+  async function registerAndInit() {
+    setStatus('Looking for BIKE-001…', null);
+    try {
+      const data = await api('GET', '/admin/devices/main');
+      const devices = data.data || [];
+      const dev = devices.find(d => d.device_id === 'BIKE-001');
+      if (dev) {
+        deviceUUID = dev.id;
+        setStatus('BIKE-001 found ✓', true);
+      } else {
+        setStatus('Registering BIKE-001…', null);
+        const created = await api('POST', '/admin/devices/main', { device_id: 'BIKE-001', name: 'BIKE-001' });
+        deviceUUID = created.data?.id;
+        setStatus('BIKE-001 registered ✓', true);
+      }
+      showContact();
+      await loadContact();
+    } catch (e) {
+      setStatus('Error: ' + e.message, false);
+    }
+  }
+
+  async function saveContact() {
+    const name = document.getElementById('c-name').value.trim();
+    const phone = document.getElementById('c-phone').value.trim();
+    const btn = document.getElementById('save-btn');
+    const msg = document.getElementById('contact-msg');
+    if (!name || !phone) { msg.textContent = 'Enter name and phone number.'; msg.className = 'msg err'; return; }
+    if (!deviceUUID) { msg.textContent = 'Device not found. Please login first.'; msg.className = 'msg err'; return; }
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      if (existingContactId) {
+        await api('PATCH', '/admin/contacts/' + existingContactId, { name, phone_number: phone, is_primary: true, is_active: true });
+      } else {
+        const res = await api('POST', '/admin/contacts', { device_id: deviceUUID, name, phone_number: phone, is_primary: true, is_active: true });
+        existingContactId = res.data?.id;
+      }
+      msg.textContent = 'Contact saved! ESP32 can now fetch it.';
+      msg.className = 'msg ok';
+    } catch (e) {
+      msg.textContent = e.message;
+      msg.className = 'msg err';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save Contact';
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
