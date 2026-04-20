@@ -58,8 +58,6 @@ app.use(
   "/docs",
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec, {
-    customCssUrl:
-      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.10.3/swagger-ui.min.css",
     customSiteTitle: "Smart Helmet API Docs",
     swaggerOptions: { persistAuthorization: true },
   })
