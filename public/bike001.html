@@ -4,10 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>BIKE-001 Setup</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 36px; width: 100%; max-width: 420px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 36px; width: 100%; max-width: 460px; }
     h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
     .sub { font-size: 0.82rem; color: #64748b; margin-bottom: 28px; }
     label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 6px; }
@@ -21,23 +22,31 @@
     .msg.err { color: #f87171; }
     .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 22px; padding: 10px 14px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; font-size: 0.83rem; color: #94a3b8; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; flex-shrink: 0; }
-    .dot.ok { background: #22c55e; }
+    .dot.ok { background: #22c55e; animation: pulse 2s infinite; }
     .dot.err { background: #ef4444; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
     .section-title { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
     hr { border: none; border-top: 1px solid #334155; margin: 20px 0; }
+
+    /* Map */
+    #map { width: 100%; height: 260px; border-radius: 10px; border: 1px solid #334155; margin-top: 10px; background: #0f172a; }
+    .loc-info { display: flex; gap: 10px; margin-top: 10px; font-size: 0.78rem; color: #94a3b8; flex-wrap: wrap; }
+    .loc-info span { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 5px 10px; }
+    .loc-info span b { color: #e2e8f0; }
+    #no-location { text-align: center; padding: 60px 0; font-size: 0.82rem; color: #475569; }
   </style>
 </head>
 <body>
 <div class="card">
   <h1>BIKE-001 Setup</h1>
-  <p class="sub">Set emergency contact — ESP32 will fetch it automatically</p>
+  <p class="sub">Emergency contact + live location</p>
 
   <div id="status-row" class="status-row">
     <div id="dot" class="dot"></div>
     <span id="status-text">Checking device…</span>
   </div>
 
-  <!-- Login section (hidden once logged in) -->
+  <!-- Login section -->
   <div id="login-section">
     <div class="section-title">Admin Login</div>
     <label>Email</label>
@@ -48,7 +57,7 @@
     <div id="login-msg" class="msg"></div>
   </div>
 
-  <!-- Contact section (shown once logged in) -->
+  <!-- Contact + Location (shown once logged in) -->
   <div id="contact-section" style="display:none">
     <hr />
     <div class="section-title">Emergency Contact</div>
@@ -58,14 +67,28 @@
     <input id="c-phone" type="tel" placeholder="+923001234567" />
     <button id="save-btn" onclick="saveContact()">Save Contact</button>
     <div id="contact-msg" class="msg"></div>
+
+    <hr />
+    <div class="section-title">Live Location <span id="loc-badge" style="color:#475569;font-size:0.68rem;text-transform:none;letter-spacing:0">— waiting for GPS…</span></div>
+    <div id="map"><div id="no-location">No location data yet.<br>ESP32 will send it automatically.</div></div>
+    <div class="loc-info" id="loc-info" style="display:none">
+      <span>Lat: <b id="l-lat">—</b></span>
+      <span>Lng: <b id="l-lng">—</b></span>
+      <span>Speed: <b id="l-speed">—</b></span>
+      <span>Updated: <b id="l-time">—</b></span>
+    </div>
   </div>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   const API = '/api';
   let token = localStorage.getItem('bike001_token');
   let deviceUUID = null;
   let existingContactId = null;
+  let map = null;
+  let marker = null;
+  let locationInterval = null;
 
   async function api(method, path, body) {
     const res = await fetch(API + path, {
@@ -80,30 +103,24 @@
 
   function setStatus(text, ok) {
     document.getElementById('status-text').textContent = text;
-    const dot = document.getElementById('dot');
-    dot.className = 'dot' + (ok === true ? ' ok' : ok === false ? ' err' : '');
+    document.getElementById('dot').className = 'dot' + (ok === true ? ' ok' : ok === false ? ' err' : '');
   }
 
   async function init() {
     if (!token) { setStatus('Not logged in', null); return; }
     try {
       const data = await api('GET', '/admin/devices/main');
-      const devices = data.data || [];
-      const dev = devices.find(d => d.device_id === 'BIKE-001');
-      if (!dev) {
-        setStatus('BIKE-001 not registered yet', false);
-        showContact();
-        return;
-      }
+      const dev = (data.data || []).find(d => d.device_id === 'BIKE-001');
+      if (!dev) { setStatus('BIKE-001 not registered yet', false); showContact(); return; }
       deviceUUID = dev.id;
       setStatus('BIKE-001 found ✓', true);
       showContact();
       await loadContact();
+      startLocationPolling();
     } catch (e) {
       setStatus('Error: ' + e.message, false);
       if (e.message.toLowerCase().includes('unauthorized') || e.message.toLowerCase().includes('token')) {
-        token = null;
-        localStorage.removeItem('bike001_token');
+        token = null; localStorage.removeItem('bike001_token');
       }
     }
   }
@@ -129,6 +146,48 @@
     } catch {}
   }
 
+  function initMap(lat, lng) {
+    document.getElementById('no-location').style.display = 'none';
+    if (!map) {
+      map = L.map('map', { zoomControl: true }).setView([lat, lng], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+      const icon = L.divIcon({
+        className: '',
+        html: '<div style="width:16px;height:16px;background:#22c55e;border:3px solid #fff;border-radius:50%;box-shadow:0 0 6px #22c55e88"></div>',
+        iconSize: [16, 16], iconAnchor: [8, 8]
+      });
+      marker = L.marker([lat, lng], { icon }).addTo(map);
+    } else {
+      marker.setLatLng([lat, lng]);
+      map.panTo([lat, lng]);
+    }
+  }
+
+  async function fetchLocation() {
+    try {
+      const res = await fetch(API + '/public/location/BIKE-001');
+      const json = await res.json();
+      if (!res.ok) return;
+      const d = json.data;
+      initMap(d.latitude, d.longitude);
+      document.getElementById('loc-info').style.display = 'flex';
+      document.getElementById('l-lat').textContent = d.latitude.toFixed(6);
+      document.getElementById('l-lng').textContent = d.longitude.toFixed(6);
+      document.getElementById('l-speed').textContent = d.speed_kmph != null ? d.speed_kmph.toFixed(1) + ' km/h' : '—';
+      const t = new Date(d.timestamp);
+      document.getElementById('l-time').textContent = t.toLocaleTimeString();
+      document.getElementById('loc-badge').textContent = '— live';
+      document.getElementById('loc-badge').style.color = '#4ade80';
+    } catch {}
+  }
+
+  function startLocationPolling() {
+    fetchLocation();
+    locationInterval = setInterval(fetchLocation, 5000);
+  }
+
   async function doLogin() {
     const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
@@ -143,19 +202,15 @@
       msg.textContent = '';
       await registerAndInit();
     } catch (e) {
-      msg.textContent = e.message;
-      msg.className = 'msg err';
-    } finally {
-      btn.disabled = false; btn.textContent = 'Login';
-    }
+      msg.textContent = e.message; msg.className = 'msg err';
+    } finally { btn.disabled = false; btn.textContent = 'Login'; }
   }
 
   async function registerAndInit() {
     setStatus('Looking for BIKE-001…', null);
     try {
       const data = await api('GET', '/admin/devices/main');
-      const devices = data.data || [];
-      const dev = devices.find(d => d.device_id === 'BIKE-001');
+      const dev = (data.data || []).find(d => d.device_id === 'BIKE-001');
       if (dev) {
         deviceUUID = dev.id;
         setStatus('BIKE-001 found ✓', true);
@@ -167,9 +222,8 @@
       }
       showContact();
       await loadContact();
-    } catch (e) {
-      setStatus('Error: ' + e.message, false);
-    }
+      startLocationPolling();
+    } catch (e) { setStatus('Error: ' + e.message, false); }
   }
 
   async function saveContact() {
@@ -178,7 +232,7 @@
     const btn = document.getElementById('save-btn');
     const msg = document.getElementById('contact-msg');
     if (!name || !phone) { msg.textContent = 'Enter name and phone number.'; msg.className = 'msg err'; return; }
-    if (!deviceUUID) { msg.textContent = 'Device not found. Please login first.'; msg.className = 'msg err'; return; }
+    if (!deviceUUID) { msg.textContent = 'Device not found.'; msg.className = 'msg err'; return; }
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
       if (existingContactId) {
@@ -187,14 +241,9 @@
         const res = await api('POST', '/admin/contacts', { device_id: deviceUUID, name, phone_number: phone, is_primary: true, is_active: true });
         existingContactId = res.data?.id;
       }
-      msg.textContent = 'Contact saved! ESP32 can now fetch it.';
-      msg.className = 'msg ok';
-    } catch (e) {
-      msg.textContent = e.message;
-      msg.className = 'msg err';
-    } finally {
-      btn.disabled = false; btn.textContent = 'Save Contact';
-    }
+      msg.textContent = 'Contact saved!'; msg.className = 'msg ok';
+    } catch (e) { msg.textContent = e.message; msg.className = 'msg err'; }
+    finally { btn.disabled = false; btn.textContent = 'Save Contact'; }
   }
 
   init();
