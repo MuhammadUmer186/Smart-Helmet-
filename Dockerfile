@@ -1,6 +1,8 @@
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
+
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 COPY prisma ./prisma/
@@ -14,11 +16,13 @@ RUN npm run prisma:generate
 RUN npm run build
 
 # ── Production image ──────────────────────────
-FROM node:20-alpine AS production
+FROM node:20-slim AS production
 
 WORKDIR /app
 
-RUN apk add --no-cache dumb-init openssl
+RUN apt-get update -y \
+    && apt-get install -y openssl dumb-init \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 COPY prisma ./prisma/
