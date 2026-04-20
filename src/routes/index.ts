@@ -5,6 +5,7 @@ import adminContactRoutes from "./admin/contact.routes";
 import adminTelemetryRoutes from "./admin/telemetry.routes";
 import adminDashboardRoutes from "./admin/dashboard.routes";
 import deviceRoutes from "./device/index";
+import publicContactRoutes from "./public/contact.routes";
 
 const router = Router();
 
@@ -17,6 +18,9 @@ router.use("/admin/dashboard", adminDashboardRoutes);
 
 // ── Device routes ────────────────────────────
 router.use("/device", deviceRoutes);
+
+// ── Public routes (no auth — for ESP32) ──────
+router.use("/public/contact", publicContactRoutes);
 
 // Health check
 router.get("/health", (_req, res) => {
