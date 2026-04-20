@@ -33,6 +33,7 @@ RUN npm run prisma:generate
 
 COPY --from=builder /app/dist ./dist
 COPY src ./src
+COPY public ./public
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN mkdir -p logs \

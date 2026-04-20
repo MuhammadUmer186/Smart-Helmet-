@@ -3,6 +3,7 @@ import helmet from "helmet";
 import cors from "cors";
 import compression from "compression";
 import morgan from "morgan";
+import path from "path";
 
 import { env } from "./config/env";
 import { swaggerSpec } from "./config/swagger";
@@ -51,6 +52,9 @@ app.use(
 
 // ── Rate limiting ─────────────────────────────
 app.use(env.API_PREFIX, globalRateLimiter);
+
+// ── Static files ──────────────────────────────
+app.use(express.static(path.join(__dirname, "../public")));
 
 // ── Swagger docs ──────────────────────────────
 app.get("/docs.json", (_req, res) => {
