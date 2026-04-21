@@ -8,7 +8,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 36px; width: 100%; max-width: 460px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 36px; width: 100%; max-width: 480px; }
     h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
     .sub { font-size: 0.82rem; color: #64748b; margin-bottom: 28px; }
     label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 6px; }
@@ -22,7 +22,7 @@
     .msg.err { color: #f87171; }
     .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 22px; padding: 10px 14px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; font-size: 0.83rem; color: #94a3b8; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; flex-shrink: 0; }
-    .dot.ok { background: #22c55e; animation: pulse 2s infinite; }
+    .dot.ok  { background: #22c55e; animation: pulse 2s infinite; }
     .dot.err { background: #ef4444; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
     .section-title { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
@@ -34,12 +34,40 @@
     .loc-info span { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 5px 10px; }
     .loc-info span b { color: #e2e8f0; }
     #no-location { text-align: center; padding: 60px 0; font-size: 0.82rem; color: #475569; }
+
+    /* Emergency alert */
+    #emergency-banner { display: none; background: #450a0a; border: 1px solid #ef4444; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+    #emergency-banner .em-title { font-size: 0.9rem; font-weight: 700; color: #fca5a5; display: flex; align-items: center; gap: 8px; }
+    #emergency-banner .em-title::before { content: '🚨'; font-size: 1.1rem; }
+    #emergency-banner .em-meta { font-size: 0.78rem; color: #fca5a5; margin-top: 6px; opacity: 0.85; }
+    #emergency-banner .em-link { display: inline-block; margin-top: 8px; font-size: 0.78rem; color: #f87171; text-decoration: underline; }
+    #ack-btn { margin-top: 10px; width: auto; padding: 6px 16px; background: #7f1d1d; font-size: 0.8rem; border-radius: 6px; }
+
+    /* Relay control */
+    .relay-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; background: #0f172a; border: 1px solid #334155; border-radius: 10px; }
+    .relay-label { font-size: 0.85rem; color: #94a3b8; }
+    .relay-label b { display: block; font-size: 1rem; color: #e2e8f0; }
+    .relay-btns { display: flex; gap: 8px; }
+    .relay-btns button { width: auto; padding: 8px 18px; font-size: 0.83rem; border-radius: 6px; }
+    #relay-on-btn  { background: #16a34a; }
+    #relay-off-btn { background: #dc2626; }
+    #relay-on-btn.active  { box-shadow: 0 0 0 2px #4ade80; }
+    #relay-off-btn.active { box-shadow: 0 0 0 2px #f87171; }
   </style>
 </head>
 <body>
 <div class="card">
   <h1>BIKE-001 Setup</h1>
-  <p class="sub">Emergency contact + live location</p>
+  <p class="sub">Emergency contact · live location · ignition control</p>
+
+  <!-- Emergency alert banner (hidden until triggered) -->
+  <div id="emergency-banner">
+    <div class="em-title">Emergency Alert</div>
+    <div class="em-meta" id="em-meta">—</div>
+    <a id="em-map-link" class="em-link" href="#" target="_blank">Open in Google Maps</a>
+    <br/>
+    <button id="ack-btn" onclick="acknowledgeEmergency()">Acknowledge</button>
+  </div>
 
   <div id="status-row" class="status-row">
     <div id="dot" class="dot"></div>
@@ -57,7 +85,7 @@
     <div id="login-msg" class="msg"></div>
   </div>
 
-  <!-- Contact + Location (shown once logged in) -->
+  <!-- Contact + Relay + Location (shown once logged in) -->
   <div id="contact-section" style="display:none">
     <hr />
     <div class="section-title">Emergency Contact</div>
@@ -67,6 +95,20 @@
     <input id="c-phone" type="tel" placeholder="+923001234567" />
     <button id="save-btn" onclick="saveContact()">Save Contact</button>
     <div id="contact-msg" class="msg"></div>
+
+    <hr />
+    <div class="section-title">Ignition Control (Relay)</div>
+    <div class="relay-row">
+      <div class="relay-label">
+        <b id="relay-state-label">—</b>
+        Bike ignition
+      </div>
+      <div class="relay-btns">
+        <button id="relay-on-btn"  onclick="setRelay(true)">ON</button>
+        <button id="relay-off-btn" onclick="setRelay(false)">OFF</button>
+      </div>
+    </div>
+    <div id="relay-msg" class="msg"></div>
 
     <hr />
     <div class="section-title">Live Location <span id="loc-badge" style="color:#475569;font-size:0.68rem;text-transform:none;letter-spacing:0">— waiting for GPS…</span></div>
@@ -89,6 +131,9 @@
   let map = null;
   let marker = null;
   let locationInterval = null;
+  let emergencyInterval = null;
+  let lastEmergencyId = localStorage.getItem('bike001_last_ack_emergency') || null;
+  let currentRelayCommand = false;
 
   async function api(method, path, body) {
     const res = await fetch(API + path, {
@@ -116,7 +161,9 @@
       setStatus('BIKE-001 found ✓', true);
       showContact();
       await loadContact();
+      await loadRelayState(dev);
       startLocationPolling();
+      startEmergencyPolling();
     } catch (e) {
       setStatus('Error: ' + e.message, false);
       if (e.message.toLowerCase().includes('unauthorized') || e.message.toLowerCase().includes('token')) {
@@ -146,6 +193,79 @@
     } catch {}
   }
 
+  function loadRelayState(dev) {
+    const relay = dev?.config?.relay_command ?? false;
+    updateRelayUI(relay);
+  }
+
+  function updateRelayUI(state) {
+    currentRelayCommand = state;
+    document.getElementById('relay-state-label').textContent = state ? 'ON — Ignition Enabled' : 'OFF — Ignition Disabled';
+    document.getElementById('relay-on-btn').className  = state ? 'active' : '';
+    document.getElementById('relay-off-btn').className = !state ? 'active' : '';
+  }
+
+  async function setRelay(state) {
+    if (!deviceUUID) return;
+    const msg = document.getElementById('relay-msg');
+    const onBtn  = document.getElementById('relay-on-btn');
+    const offBtn = document.getElementById('relay-off-btn');
+    onBtn.disabled = offBtn.disabled = true;
+    try {
+      await api('POST', '/admin/devices/main/' + deviceUUID + '/relay', { relay_command: state });
+      updateRelayUI(state);
+      msg.textContent = 'Relay command sent: ' + (state ? 'ON' : 'OFF');
+      msg.className = 'msg ok';
+    } catch (e) {
+      msg.textContent = e.message;
+      msg.className = 'msg err';
+    } finally {
+      onBtn.disabled = offBtn.disabled = false;
+    }
+  }
+
+  // ── Emergency alert ────────────────────────────────────
+  async function fetchEmergency() {
+    try {
+      const res = await fetch(API + '/public/emergency/BIKE-001');
+      const json = await res.json();
+      if (!res.ok || !json.data) return;
+      const ev = json.data;
+      if (ev.id === lastEmergencyId) return;
+
+      // Show banner
+      const banner = document.getElementById('emergency-banner');
+      const t = new Date(ev.timestamp);
+      const meta = ev.metadata;
+      document.getElementById('em-meta').textContent =
+        'Time: ' + t.toLocaleString() + (meta?.speed_kmph != null ? ' · Speed: ' + (+meta.speed_kmph).toFixed(1) + ' km/h' : '');
+      const link = document.getElementById('em-map-link');
+      if (meta?.latitude != null && meta?.longitude != null) {
+        link.href = 'https://maps.google.com/?q=' + meta.latitude + ',' + meta.longitude;
+        link.style.display = 'inline';
+      } else {
+        link.style.display = 'none';
+      }
+      banner.style.display = 'block';
+    } catch {}
+  }
+
+  function acknowledgeEmergency() {
+    const banner = document.getElementById('emergency-banner');
+    const meta = document.getElementById('em-map-link');
+    // Store the last seen emergency id by reading data attribute we'll set
+    banner.style.display = 'none';
+    // Mark as acknowledged so it doesn't reappear on same session
+    lastEmergencyId = banner.dataset.emergencyId || lastEmergencyId;
+    localStorage.setItem('bike001_last_ack_emergency', lastEmergencyId || '');
+  }
+
+  function startEmergencyPolling() {
+    fetchEmergency();
+    emergencyInterval = setInterval(fetchEmergency, 5000);
+  }
+
+  // ── Map / Location ─────────────────────────────────────
   function initMap(lat, lng) {
     document.getElementById('no-location').style.display = 'none';
     if (!map) {
@@ -188,6 +308,7 @@
     locationInterval = setInterval(fetchLocation, 5000);
   }
 
+  // ── Auth ───────────────────────────────────────────────
   async function doLogin() {
     const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
@@ -210,7 +331,7 @@
     setStatus('Looking for BIKE-001…', null);
     try {
       const data = await api('GET', '/admin/devices/main');
-      const dev = (data.data || []).find(d => d.device_id === 'BIKE-001');
+      let dev = (data.data || []).find(d => d.device_id === 'BIKE-001');
       if (dev) {
         deviceUUID = dev.id;
         setStatus('BIKE-001 found ✓', true);
@@ -218,11 +339,14 @@
         setStatus('Registering BIKE-001…', null);
         const created = await api('POST', '/admin/devices/main', { device_id: 'BIKE-001', name: 'BIKE-001' });
         deviceUUID = created.data?.id;
+        dev = created.data;
         setStatus('BIKE-001 registered ✓', true);
       }
       showContact();
       await loadContact();
+      loadRelayState(dev);
       startLocationPolling();
+      startEmergencyPolling();
     } catch (e) { setStatus('Error: ' + e.message, false); }
   }
 

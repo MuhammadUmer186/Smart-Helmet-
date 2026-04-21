@@ -148,6 +148,7 @@ model DeviceConfig {
   low_battery_threshold_helmet Int        @default(20)
   emergency_sms_enabled        Boolean    @default(true)
   emergency_backend_enabled    Boolean    @default(true)
+  relay_command                Boolean    @default(false)
   created_at                   DateTime   @default(now())
   updated_at                   DateTime   @updatedAt
 

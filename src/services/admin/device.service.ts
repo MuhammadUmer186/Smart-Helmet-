@@ -124,6 +124,29 @@ export const unpairDevices = async (pairingId: string) => {
   return prisma.devicePairing.delete({ where: { id: pairingId } });
 };
 
+export const setRelayCommand = async (deviceId: string, relay_command: boolean) => {
+  const device = await prisma.mainDevice.findUnique({ where: { id: deviceId } });
+  if (!device) throw new AppError("Device not found", 404);
+
+  return prisma.deviceConfig.upsert({
+    where: { device_id: deviceId },
+    create: { device_id: deviceId, relay_command },
+    update: { relay_command },
+  });
+};
+
+export const getEmergencyEvents = async (deviceId: string, limit = 10) => {
+  const device = await prisma.mainDevice.findUnique({ where: { id: deviceId } });
+  if (!device) throw new AppError("Device not found", 404);
+
+  return prisma.deviceEvent.findMany({
+    where: { device_id: deviceId, event_type: "emergency_button" },
+    orderBy: { timestamp: "desc" },
+    take: limit,
+    select: { id: true, event_message: true, severity: true, metadata: true, timestamp: true },
+  });
+};
+
 export const updateDeviceConfig = async (
   deviceId: string,
   data: {

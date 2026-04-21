@@ -44,19 +44,23 @@ const char GPRS_PASS[] = "";
 const char SERVER_HOST[] = "helmet.aiotstudio.online";
 const int  SERVER_PORT   = 80;
 
-String contactPath  = String("/api/public/contact/")  + DEVICE_ID;
-String locationPath = String("/api/public/location/") + DEVICE_ID;
+String contactPath   = String("/api/public/contact/")   + DEVICE_ID;
+String locationPath  = String("/api/public/location/")  + DEVICE_ID;
+String emergencyPath = String("/api/public/emergency/") + DEVICE_ID;
+String relayPath     = String("/api/public/relay/")     + DEVICE_ID;
 
 // =====================================================
 // TIMINGS
 // =====================================================
-const unsigned long BTN_LONGPRESS_MS         = 1500;
 const unsigned long MODEM_BOOT_DELAY_MS      = 8000;
 const unsigned long MODEM_NETWORK_TIMEOUT_MS = 30000;
 const unsigned long CONTACT_REFRESH_MS       = 60000;
-const unsigned long LOCATION_SEND_MS         = 10000;   // send location every 10s
+const unsigned long LOCATION_SEND_MS         = 10000;
+const unsigned long RELAY_POLL_MS            = 5000;
 const unsigned long HTTP_RESPONSE_TIMEOUT_MS = 20000;
-const unsigned long GPS_WAIT_MS              = 5000;    // wait up to 5s for fresh GPS fix
+const unsigned long GPS_WAIT_MS              = 5000;
+const unsigned long EMERGENCY_COOLDOWN_MS    = 60000;  // min 60s between alerts
+const unsigned long BTN_DEBOUNCE_MS          = 50;
 
 // =====================================================
 // SERIALS
@@ -76,10 +80,11 @@ TinyGPSPlus   gps;
 // GLOBALS
 // =====================================================
 bool   gsmReady  = false;
-bool   fetchNow  = false;
-String emergencyPhone      = "";
+String emergencyPhone        = "";
 unsigned long lastContactFetchMs  = 0;
 unsigned long lastLocationSendMs  = 0;
+unsigned long lastRelayPollMs     = 0;
+unsigned long lastEmergencyMs     = 0;
 uint32_t activeBaud = 0;
 
 // =====================================================
@@ -254,7 +259,6 @@ bool readGPS(double& lat, double& lng, double& speed) {
     }
     delay(10);
   }
-  // Return last known fix if available
   if (gps.location.isValid()) {
     lat   = gps.location.lat();
     lng   = gps.location.lng();
@@ -294,20 +298,94 @@ bool httpPostLocation() {
 }
 
 // =====================================================
-// BUTTON
+// SEND SMS + POST EMERGENCY
 // =====================================================
-void handleFetchButton() {
-  static bool lastState = HIGH;
+void triggerEmergency() {
+  SerialMon.println("[EMERGENCY] Triggered!");
+
+  double lat = 0, lng = 0, speed = 0;
+  bool hasGps = readGPS(lat, lng, speed);
+
+  // Send SMS via GSM modem
+  if (emergencyPhone.length() >= 6) {
+    String sms = "EMERGENCY! BIKE-001 needs help.\n";
+    if (hasGps) {
+      sms += "Location: https://maps.google.com/?q=";
+      sms += String(lat, 6) + "," + String(lng, 6) + "\n";
+      sms += "Speed: " + String(speed, 1) + " km/h";
+    } else {
+      sms += "GPS location unavailable.";
+    }
+    SerialMon.print("[SMS] Sending to: "); SerialMon.println(emergencyPhone);
+    bool smsSent = modem.sendSMS(emergencyPhone, sms);
+    SerialMon.println(smsSent ? "[SMS] Sent OK" : "[SMS] Send failed");
+  } else {
+    SerialMon.println("[SMS] No contact loaded, skipping SMS");
+  }
+
+  // Report to backend
+  DynamicJsonDocument doc(256);
+  doc["message"] = "Emergency button pressed";
+  if (hasGps) {
+    doc["latitude"]   = lat;
+    doc["longitude"]  = lng;
+    doc["speed_kmph"] = speed;
+    doc["gps_valid"]  = true;
+  }
+  String body;
+  serializeJson(doc, body);
+  String raw = rawPost(emergencyPath, body);
+  SerialMon.println(raw.indexOf("200 OK") >= 0 ? "[EMERGENCY] Backend notified" : "[EMERGENCY] Backend post failed");
+}
+
+// =====================================================
+// POLL RELAY COMMAND
+// =====================================================
+void httpPollRelay() {
+  String body = extractBody(rawGet(relayPath));
+  if (!body.length()) return;
+
+  DynamicJsonDocument doc(256);
+  if (deserializeJson(doc, body)) return;
+
+  bool cmd = doc["data"]["relay_command"] | false;
+  digitalWrite(RELAY_PIN, cmd ? HIGH : LOW);
+  SerialMon.print("[RELAY] Command: "); SerialMon.println(cmd ? "ON" : "OFF");
+}
+
+// =====================================================
+// EMERGENCY BUTTON (active-HIGH, debounced)
+// =====================================================
+void handleEmergencyButton() {
+  static bool lastState  = LOW;
   static unsigned long pressedAt = 0;
-  bool nowState = digitalRead(EMERGENCY_BTN_PIN);
-  if (lastState == HIGH && nowState == LOW) pressedAt = millis();
-  if (lastState == LOW  && nowState == HIGH) {
-    if (millis() - pressedAt >= BTN_LONGPRESS_MS) {
-      SerialMon.println("[BTN] Manual fetch triggered");
-      fetchNow = true;
+  static bool triggered  = false;
+
+  // Feed GPS while waiting for button reads
+  while (SerialGPS.available()) gps.encode(SerialGPS.read());
+
+  bool now = digitalRead(EMERGENCY_BTN_PIN);
+
+  if (lastState == LOW && now == HIGH) {
+    pressedAt = millis();
+    triggered = false;
+  }
+
+  // Trigger once per press after debounce, with cooldown
+  if (now == HIGH && !triggered && (millis() - pressedAt >= BTN_DEBOUNCE_MS)) {
+    if (millis() - lastEmergencyMs >= EMERGENCY_COOLDOWN_MS) {
+      triggered      = true;
+      lastEmergencyMs = millis();
+      if (gsmReady) triggerEmergency();
+      else SerialMon.println("[EMERGENCY] GSM not ready, skipping");
+    } else {
+      triggered = true; // skip — still in cooldown
+      SerialMon.println("[EMERGENCY] Cooldown active, ignoring");
     }
   }
-  lastState = nowState;
+
+  if (now == LOW) triggered = false;
+  lastState = now;
 }
 
 // =====================================================
@@ -320,11 +398,10 @@ void setup() {
 
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
-  pinMode(EMERGENCY_BTN_PIN, INPUT_PULLUP);
+  pinMode(EMERGENCY_BTN_PIN, INPUT);   // external active-HIGH button
   pinMode(MAIN_BAT_ADC_PIN, INPUT);
   analogReadResolution(12);
 
-  // GPS
   SerialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   SerialMon.println("[GPS] NEO-6M initialized");
 
@@ -339,6 +416,7 @@ void setup() {
     httpGetContact();
     lastContactFetchMs = millis();
     lastLocationSendMs = millis();
+    lastRelayPollMs    = millis();
   }
 
   SerialMon.println("[BOOT] Setup done");
@@ -348,27 +426,22 @@ void setup() {
 // LOOP
 // =====================================================
 void loop() {
-  // Feed GPS continuously
   while (SerialGPS.available()) gps.encode(SerialGPS.read());
 
-  handleFetchButton();
-
-  if (fetchNow) {
-    fetchNow = false;
-    httpGetContact();
-    lastContactFetchMs = millis();
-  }
+  handleEmergencyButton();
 
   if (gsmReady) {
-    // Refresh contact every 60s
     if (millis() - lastContactFetchMs >= CONTACT_REFRESH_MS) {
       httpGetContact();
       lastContactFetchMs = millis();
     }
-    // Send location every 10s
     if (millis() - lastLocationSendMs >= LOCATION_SEND_MS) {
       httpPostLocation();
       lastLocationSendMs = millis();
+    }
+    if (millis() - lastRelayPollMs >= RELAY_POLL_MS) {
+      httpPollRelay();
+      lastRelayPollMs = millis();
     }
   }
 

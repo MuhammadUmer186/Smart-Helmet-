@@ -7,6 +7,8 @@ import adminDashboardRoutes from "./admin/dashboard.routes";
 import deviceRoutes from "./device/index";
 import publicContactRoutes from "./public/contact.routes";
 import publicLocationRoutes from "./public/location.routes";
+import publicRelayRoutes from "./public/relay.routes";
+import publicEmergencyRoutes from "./public/emergency.routes";
 
 const router = Router();
 
@@ -23,6 +25,8 @@ router.use("/device", deviceRoutes);
 // ── Public routes (no auth — for ESP32) ──────
 router.use("/public/contact", publicContactRoutes);
 router.use("/public/location", publicLocationRoutes);
+router.use("/public/relay", publicRelayRoutes);
+router.use("/public/emergency", publicEmergencyRoutes);
 
 // Health check
 router.get("/health", (_req, res) => {

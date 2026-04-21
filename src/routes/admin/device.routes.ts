@@ -27,6 +27,10 @@ router.patch("/main/:id/config", validateBody(updateDeviceConfigSchema), deviceC
 router.post("/helmet", validateBody(createHelmetDeviceSchema), deviceController.createHelmetDevice);
 router.get("/helmet", deviceController.listHelmetDevices);
 
+// Relay control
+router.post("/main/:id/relay", deviceController.setRelayCommand);
+router.get("/main/:id/emergency", deviceController.getEmergencyEvents);
+
 // Pairings
 router.post("/pair", validateBody(pairDevicesSchema), deviceController.pairDevices);
 router.delete("/pair/:pairingId", deviceController.unpairDevices);

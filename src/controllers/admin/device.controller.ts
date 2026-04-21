@@ -73,3 +73,17 @@ export const updateDeviceConfig = async (req: Request, res: Response, next: Next
     sendSuccess(res, config, "Device config updated");
   } catch (err) { next(err); }
 };
+
+export const setRelayCommand = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const config = await deviceService.setRelayCommand(req.params.id, req.body.relay_command);
+    sendSuccess(res, { relay_command: config.relay_command }, "Relay command updated");
+  } catch (err) { next(err); }
+};
+
+export const getEmergencyEvents = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const events = await deviceService.getEmergencyEvents(req.params.id);
+    sendSuccess(res, events);
+  } catch (err) { next(err); }
+};
