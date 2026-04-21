@@ -398,7 +398,7 @@ void setup() {
 
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
-  pinMode(EMERGENCY_BTN_PIN, INPUT);   // external active-HIGH button
+  pinMode(EMERGENCY_BTN_PIN, INPUT_PULLDOWN);  // active-HIGH; internal pull-down keeps pin LOW when idle
   pinMode(MAIN_BAT_ADC_PIN, INPUT);
   analogReadResolution(12);
 
