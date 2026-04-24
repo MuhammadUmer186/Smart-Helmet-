@@ -1,422 +1,464 @@
-# Smart Helmet IoT Backend
+# Smart Helmet Backend (IoT + Admin Dashboard)
 
-Production-grade REST API backend for the Smart Helmet + Bike Safety IoT system.
+This repository is a **TypeScript/Express + PostgreSQL/Prisma** backend for a Smart Helmet / Bike Safety IoT system.
 
-## Stack
-- **Runtime**: Node.js 20 + TypeScript
+It supports:
+- **Admin dashboard APIs** (devices, pairing, contacts, telemetry, events, map, dashboard summary).
+- **Device APIs** for ESP32/main unit (telemetry, events, heartbeat, location, config).
+- **Public endpoints** that the ESP32 can poll without auth (contact, relay command, emergency, latest location).
+- **Operational protections**: rate limiting, validation, centralized error handling, logging, OpenAPI docs.
+
+It also includes **detection & alerting primitives**:
+- **Last-hour data retention** (keep only 1 hour of telemetry + events per device).
+- **Tariff-based alerts** (high load during high-rate hours).
+- **Theft suspected alerts** (movement detected while relay is OFF).
+- **Decaying anomaly score** (computed from last-hour events so it naturally goes down).
+- **AI anomaly response normalization** (prevents “stuck anomaly” when payload fields conflict).
+
+---
+
+## Tech stack
+- **Runtime**: Node.js \(>= 18\) + TypeScript
 - **Framework**: Express.js
-- **Database**: PostgreSQL 16
-- **ORM**: Prisma 5
-- **Auth**: JWT (admin) + device key auth
+- **DB**: PostgreSQL
+- **ORM**: Prisma
+- **Auth**: JWT (admin) + device auth (secret headers or device JWT)
 - **Validation**: Zod
 - **Logging**: Winston + Morgan
-- **Docs**: Swagger/OpenAPI 3.0
-- **Docker**: App + PostgreSQL compose
+- **Docs**: Swagger/OpenAPI (served at `/docs`)
 
 ---
 
-## Project Structure
+## Repository structure (what lives where)
 
 ```
-smart-helmet-backend/
-├── src/
-│   ├── app.ts                    # Express app setup
-│   ├── server.ts                 # HTTP server + graceful shutdown
-│   ├── config/
-│   │   ├── env.ts                # Typed env variables
-│   │   ├── database.ts           # Prisma client singleton
-│   │   └── swagger.ts            # OpenAPI spec config
-│   ├── middleware/
-│   │   ├── adminAuth.ts          # JWT admin auth guard
-│   │   ├── deviceAuth.ts         # Device header/token auth guard
-│   │   ├── errorHandler.ts       # Central error handler + AppError
-│   │   ├── rateLimiter.ts        # Global / device / auth rate limits
-│   │   └── validate.ts           # Zod schema validation middleware
-│   ├── controllers/
-│   │   ├── admin/                # Admin panel controllers
-│   │   └── device/               # ESP32 device controllers
-│   ├── services/
-│   │   ├── admin/                # Admin business logic
-│   │   └── device/               # Device business logic
-│   ├── routes/
-│   │   ├── admin/                # Admin route definitions
-│   │   ├── device/               # Device route definitions
-│   │   └── index.ts              # Root router
-│   ├── validators/
-│   │   ├── admin.validator.ts    # Admin Zod schemas
-│   │   └── device.validator.ts   # Device Zod schemas
-│   ├── utils/
-│   │   ├── logger.ts             # Winston logger
-│   │   ├── response.ts           # Consistent JSON response helpers
-│   │   ├── jwt.ts                # Sign/verify admin + device tokens
-│   │   └── crypto.ts             # Bcrypt + secret key utilities
-│   └── types/
-│       └── index.ts              # Shared TypeScript types
-├── prisma/
-│   ├── schema.prisma             # Full Prisma schema
-│   └── seed.ts                   # Demo data seeder
-├── docs/
-│   └── postman_collection.json   # Import into Postman
-├── .env.example
-├── docker-compose.yml
-├── Dockerfile
-└── README.md
+src/
+  app.ts                         Express app: security, cors, logging, routes, errors
+  server.ts                      HTTP server + graceful shutdown
+  config/
+    env.ts                        All environment variables (typed)
+    database.ts                   Prisma client singleton + connection helpers
+    swagger.ts                    OpenAPI generation
+  middleware/
+    adminAuth.ts                  Admin JWT auth guard
+    deviceAuth.ts                 Device auth guard (headers or device JWT)
+    errorHandler.ts               Central error handler
+    rateLimiter.ts                Global/device/auth rate limits
+    normalizeAiAnomaly.ts         Response normalizer for AI anomaly payloads
+    validate.ts                   Zod schema validation middleware
+  routes/
+    index.ts                      Mounts admin/device/public routes under `/api`
+    admin/*                       Admin routes (dashboard/devices/telemetry/contacts/auth)
+    device/*                       Device routes (telemetry/event/location/heartbeat/auth)
+    public/*                       Public routes for device polling
+  services/
+    admin/*                       Admin business logic
+    device/
+      telemetry.service.ts        Persist telemetry/events + trigger detection hooks
+      detection.service.ts        Retention pruning + tariff/theft detection + anomaly score
+  controllers/                    Route handlers (thin; call services)
+  validators/                     Zod request schemas
+  utils/                          response helpers, JWT helpers, logger, crypto
+prisma/
+  schema.prisma                   Database schema
+  seed.ts                         Seed script (admin + demo device)
+public/
+  dashboard.html                  Static admin dashboard page (if used)
 ```
 
 ---
 
-## Quick Start (Local)
+## Quick start (local)
 
-### 1. Prerequisites
-- Node.js 20+
-- PostgreSQL 16 running locally, OR use Docker Compose
+### Prerequisites
+- Node.js \(>= 18\)
+- PostgreSQL running locally (or use Docker)
 
-### 2. Install dependencies
+### Install
+
 ```bash
 npm install
 ```
 
-### 3. Set up environment
+### Configure environment
+
 ```bash
 cp .env.example .env
-# Edit .env — update DATABASE_URL, JWT_SECRET, DEVICE_TOKEN_SECRET
 ```
 
-### 4. Start database with Docker (optional)
-```bash
-docker compose up postgres -d
-```
+Minimum values you must set in `.env`:
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `DEVICE_TOKEN_SECRET`
 
-### 5. Run migrations
+### Run Prisma migrations
+
 ```bash
 npm run prisma:migrate
-# For production:
-# npm run prisma:migrate:prod
 ```
 
-### 6. Seed demo data
+### Optional seed (demo data)
+
 ```bash
 npm run prisma:seed
 ```
 
-### 7. Start development server
+### Run dev server
+
 ```bash
 npm run dev
 ```
 
-Server starts at: `http://localhost:3000`  
-Swagger docs: `http://localhost:3000/docs`
+- API base: `http://localhost:3000/api`
+- Swagger UI: `http://localhost:3000/docs`
+- Health: `http://localhost:3000/api/health`
 
 ---
 
-## Docker (Full Stack)
+## Scripts (what to run)
 
 ```bash
-# Build and run app + postgres
-docker compose up --build
+npm run dev         # dev server (ts-node-dev)
+npm run typecheck   # TypeScript typecheck only
+npm run lint        # ESLint
+npm run build       # compile to dist/
+npm run start       # run compiled server
 
-# Run migrations inside container
-docker compose exec app npx prisma migrate deploy
-
-# Seed
-docker compose exec app npx ts-node prisma/seed.ts
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:migrate:prod
+npm run prisma:seed
 ```
 
 ---
 
-## Default Credentials (after seed)
+## Environment variables (complete list)
 
-| Item | Value |
-|------|-------|
-| Admin email | `admin@smarthelmet.local` |
-| Admin password | `Admin@12345` |
-| Device ID | `MAIN-DEMO-001` |
-| Device secret | `demo_secret_key_change_in_production_32chars` |
+### Core
+- `NODE_ENV` \(default: `development`\)
+- `PORT` \(default: `3000`\)
+- `API_PREFIX` \(default: `/api`\)
+- `DATABASE_URL` **required**
+- `CORS_ORIGINS` \(default: `http://localhost:3000`\) comma-separated
+
+### Auth
+- `JWT_SECRET` **required**
+- `JWT_EXPIRES_IN` \(default: `7d`\)
+- `JWT_REFRESH_EXPIRES_IN` \(default: `30d`\)
+- `DEVICE_TOKEN_SECRET` **required**
+- `DEVICE_TOKEN_EXPIRES_IN` \(default: `24h`\)
+
+### Rate limiting
+- `RATE_LIMIT_WINDOW_MS` \(default: `900000`\)
+- `RATE_LIMIT_MAX` \(default: `100`\)
+- `DEVICE_RATE_LIMIT_MAX` \(default: `500`\)
+
+### Retention & detection
+- `DATA_RETENTION_WINDOW_MS` \(default: `3600000` = 1 hour\)
+
+### Tariff-based alerting
+- `TARIFF_HIGH_RATE_START_HOUR` \(default: `18`\) — local server hour (24h)
+- `TARIFF_HIGH_RATE_END_HOUR` \(default: `6`\) — supports wrap across midnight
+- `HIGH_LOAD_WATTS_THRESHOLD` \(default: `1500`\)
+
+### Theft detection (last-hour telemetry)
+- `THEFT_SPEED_KMPH_THRESHOLD` \(default: `8`\)
+- `THEFT_MIN_SAMPLES` \(default: `3`\)
+
+### AI anomaly response normalization
+- `ANOMALY_SCORE_THRESHOLD` \(default: `50`\) — 0–100 scale
+
+### Logging
+- `LOG_LEVEL` \(default: `info`\)
+- `LOG_DIR` \(default: `logs`\)
 
 ---
 
-## API Reference
+## Auth model (how requests are authenticated)
 
-Base URL: `http://localhost:3000/api`
+### Admin
+- `Authorization: Bearer <admin_jwt>`
+- Used on `/api/admin/**`
 
-### Authentication
+### Device
+Supported patterns:
+- **Headers**: `x-device-id` + `x-device-secret`
+- **Device JWT**: obtained from `POST /api/device/auth`, then `Authorization: Bearer <device_jwt>`
 
-**Admin:** `Authorization: Bearer <jwt_token>`  
-**Device (option A):** `x-device-id: MAIN-001` + `x-device-secret: <secret>`  
-**Device (option B):** `Authorization: Bearer <device_jwt>` (after `/device/auth`)
+Device requests are rate-limited and validated.
 
 ---
+
+## API overview (what endpoints exist)
+
+Base URL (local): `http://localhost:3000/api`
 
 ### Health
-```
-GET /api/health
-```
+- `GET /health`
+
+### Admin: Auth
+- `POST /admin/auth/login`
+- `GET /admin/auth/me`
+
+### Admin: Devices
+- `POST /admin/devices/main`
+- `GET /admin/devices/main`
+- `GET /admin/devices/main/:id`
+- `PATCH /admin/devices/main/:id`
+- `POST /admin/devices/main/:id/rotate-secret`
+- `PATCH /admin/devices/main/:id/config`
+- `POST /admin/devices/helmet`
+- `GET /admin/devices/helmet`
+- `POST /admin/devices/pair`
+- `DELETE /admin/devices/pair/:pairingId`
+
+### Admin: Contacts
+- `POST /admin/contacts`
+- `GET /admin/contacts/device/:deviceId`
+- `GET /admin/contacts/:id`
+- `PATCH /admin/contacts/:id`
+- `DELETE /admin/contacts/:id`
+
+### Admin: Telemetry & Events
+- `GET /admin/telemetry`
+- `GET /admin/telemetry/device/:deviceId/latest`
+- `GET /admin/telemetry/events`
+
+Query parameters supported by list endpoints:
+- `page`, `limit`, `device_id`, `from`, `to`, `event_type`
+
+### Admin: Dashboard
+- `GET /admin/dashboard/summary`
+- `GET /admin/dashboard/device-statuses`
+- `GET /admin/dashboard/map`
+
+### Device (ESP32 / main unit)
+- `POST /device/auth`
+- `GET /device/config/:deviceId`
+- `GET /device/:deviceId/contact`
+- `POST /device/telemetry`
+- `POST /device/event`
+- `POST /device/location`
+- `POST /device/heartbeat`
+
+### Public (no auth; for device polling)
+- `GET /public/contact/:deviceId`  — get primary contact
+- `GET /public/location/:deviceId` — get latest location
+- `GET /public/relay/:deviceId`    — get relay command
+- `POST /public/emergency/:deviceId` — record emergency button press
+- `GET /public/emergency/:deviceId`  — get latest emergency event
 
 ---
 
-### Admin Auth
-```
-POST /api/admin/auth/login        Login and get JWT
-GET  /api/admin/auth/me           Get current admin profile
-```
+## Dashboard functions (what each dashboard endpoint returns)
+
+### `GET /api/admin/dashboard/summary`
+Returns a compact page payload:
+- **stats**:
+  - `total_devices`
+  - `active_devices`
+  - `online_devices`
+  - `offline_devices`
+  - `total_emergency_contacts`
+  - `total_telemetry_records`
+  - `critical_events_24h`
+- **recent_events**: latest 10 events across devices
+- **latest_telemetry**: last telemetry record per device (up to 5 devices in response)
+
+Online/offline is computed using:
+- `ONLINE_THRESHOLD_SECONDS` (currently `90` seconds)
+- `main_devices.last_seen`
+
+### `GET /api/admin/dashboard/device-statuses`
+Returns one entry per ACTIVE device with:
+- device identity info
+- pairing info
+- `is_online`
+- `latest_state` (last telemetry fields)
+- `anomaly_score` (0–100, computed from last hour events with time decay)
+
+### `GET /api/admin/dashboard/map`
+Returns map-ready device locations using last valid GPS telemetry record per device.
 
 ---
 
-### Admin — Devices
-```
-POST   /api/admin/devices/main              Register main device
-GET    /api/admin/devices/main              List all main devices (?page=1&limit=20)
-GET    /api/admin/devices/main/:id          Get main device + pairing + config
-PATCH  /api/admin/devices/main/:id          Update main device
-POST   /api/admin/devices/main/:id/rotate-secret  Rotate device secret key
-PATCH  /api/admin/devices/main/:id/config   Update device configuration
+## Detection & AI functions (how it works)
 
-POST   /api/admin/devices/helmet            Register helmet device
-GET    /api/admin/devices/helmet            List helmet devices
+### 1) Last-hour retention (DB storage behavior)
+On every `POST /api/device/telemetry`, after inserting the new telemetry:
+- the service deletes telemetry **older than `DATA_RETENTION_WINDOW_MS`** for that device
+- it deletes events **older than `DATA_RETENTION_WINDOW_MS`** for that device
 
-POST   /api/admin/devices/pair              Pair main + helmet device
-DELETE /api/admin/devices/pair/:pairingId   Unpair devices
-```
+Implementation: `src/services/device/detection.service.ts` → `pruneOldDeviceData()`
+
+This keeps the DB small and guarantees any “last hour” logic is bounded.
+
+### 2) Tariff-based alerting (high-rate + high load)
+Trigger condition:
+- current server time is inside the **high-rate window**
+  - `TARIFF_HIGH_RATE_START_HOUR` .. `TARIFF_HIGH_RATE_END_HOUR` (wrap around midnight supported)
+- incoming telemetry contains a load/power watts value in `raw_payload`
+- `watts >= HIGH_LOAD_WATTS_THRESHOLD`
+
+When triggered, it creates a `DeviceEvent`:
+- `event_type = tariff_high_rate_load`
+- `severity = WARNING`
+- `event_message` recommends avoiding heavy loads during peak hours
+
+To avoid spamming, it de-dupes to **at most 1 event per 10 minutes** per device.
+
+Watts extraction is flexible to support multiple firmware payload keys:
+- `raw_payload.load_watts`
+- `raw_payload.load_w`
+- `raw_payload.power_watts`
+- `raw_payload.power_w`
+- `raw_payload.watts`
+
+### 3) Theft suspected (last-hour telemetry)
+Trigger condition in last hour telemetry:
+- `gps_valid = true`
+- `relay_state = false` (relay/engine off)
+- `speed_kmph > THEFT_SPEED_KMPH_THRESHOLD`
+- at least `THEFT_MIN_SAMPLES` samples satisfy this
+
+When triggered, it creates:
+- `event_type = theft_suspected`
+- `severity = CRITICAL`
+
+Also de-duped to avoid spam (max once per 10 minutes).
+
+### 4) Decaying anomaly score (goes down naturally)
+The endpoint `GET /api/admin/dashboard/device-statuses` includes:
+- `anomaly_score` (0–100)
+
+How it’s computed:
+- fetch last hour events for the device
+- each event contributes a base weight by severity:
+  - `INFO` < `WARNING` < `CRITICAL`
+- contribution decays over time using an exponential decay
+
+This means:
+- score increases when recent WARN/CRITICAL events happen
+- score decreases automatically as events age out (and because old events are pruned)
+
+### 5) AI anomaly response normalization (prevents “stuck anomaly”)
+Some clients/models produce inconsistent payloads like:
+- `ai_result.status = "normal"` but `suggestion.status = "anomaly"`
+
+That can cause frontends to permanently show “anomaly”.
+
+Middleware: `src/middleware/normalizeAiAnomaly.ts`
+- intercepts JSON responses under `/api`
+- if it sees `data.ai_result` / `data.suggestion` / `data.theft_score`, it:
+  - computes a **single** `data.final`:
+    - `final.anomaly_score` = max of AI score, suggestion score, theft score (scaled to 0–100)
+    - `final.status` = `"anomaly"` only if `final.anomaly_score >= ANOMALY_SCORE_THRESHOLD`
+  - when `final.status` is normal, it forces:
+    - `suggestion.status = "normal"`
+    - action item scores to `0`
+
+This makes the API response internally consistent and prevents “anomaly not going down”.
 
 ---
 
-### Admin — Contacts
-```
-POST   /api/admin/contacts                       Create emergency contact
-GET    /api/admin/contacts/device/:deviceId      List contacts for device
-GET    /api/admin/contacts/:id                   Get contact
-PATCH  /api/admin/contacts/:id                   Update contact
-DELETE /api/admin/contacts/:id                   Delete contact
-```
+## Event types (device events)
+
+Core:
+- `heartbeat`
+- `helmet_status_changed`
+- `relay_on` / `relay_off`
+- `emergency_button` / `emergency_sms_sent`
+- `low_battery_main` / `low_battery_helmet`
+- `accident_suspected` / `accident_confirmed`
+- `gps_fix_lost` / `gps_fix_restored`
+
+Detection-generated:
+- `tariff_high_rate_load`
+- `theft_suspected`
+
+Severity mapping lives in `src/types/index.ts`.
 
 ---
 
-### Admin — Dashboard
-```
-GET /api/admin/dashboard/summary         Stats: devices, events, telemetry counts
-GET /api/admin/dashboard/device-statuses Online/offline + latest state per device
-GET /api/admin/dashboard/map             GPS locations (map-ready format)
-```
+## Project flow (end-to-end)
+
+### Device → Backend (telemetry loop)
+1. Device authenticates (optional) via `/api/device/auth`
+2. Device sends periodic telemetry to `/api/device/telemetry`
+3. Backend stores telemetry and updates `main_devices.last_seen`
+4. Backend prunes old device data (keeps last hour only)
+5. Backend triggers detection:
+   - tariff_high_rate_load events
+   - theft_suspected events
+6. Admin dashboard reads telemetry/events and shows:
+   - online/offline status
+   - latest telemetry snapshot
+   - map locations
+   - recent events
+   - anomaly_score (decays)
+
+### Admin → Backend (dashboard loop)
+1. Admin logs in via `/api/admin/auth/login`
+2. Admin uses dashboard endpoints to display device state and events
 
 ---
 
-### Admin — Telemetry & Events
-```
-GET /api/admin/telemetry                         List telemetry (paginated)
-GET /api/admin/telemetry/device/:deviceId/latest Latest telemetry record
-GET /api/admin/telemetry/events                  List events (paginated)
+## Production deployment notes (important)
 
-Query params: page, limit, device_id, from, to, event_type
-```
+### 1) Prisma enum update for new event types
+If your production DB already exists, PostgreSQL needs the new enum values added.
 
----
+Run once on the production DB:
 
-### Device APIs (ESP32)
-```
-POST /api/device/auth                     Authenticate → receive JWT
-GET  /api/device/config/:deviceId         Fetch device config
-GET  /api/device/:deviceId/contact        Fetch primary emergency contact (SMS use)
-POST /api/device/telemetry                Submit full telemetry
-POST /api/device/event                    Submit discrete event
-POST /api/device/location                 Submit GPS location
-POST /api/device/heartbeat                Send lightweight heartbeat
+```sql
+ALTER TYPE "EventType" ADD VALUE IF NOT EXISTS 'tariff_high_rate_load';
+ALTER TYPE "EventType" ADD VALUE IF NOT EXISTS 'theft_suspected';
 ```
 
----
+Then deploy the updated backend.
 
-## Sample curl Requests
+### 2) Build & run
+Typical production steps:
 
-### Admin login
 ```bash
-curl -s -X POST http://localhost:3000/api/admin/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@smarthelmet.local","password":"Admin@12345"}'
+npm ci
+npm run prisma:generate
+npm run build
+npm run prisma:migrate:prod
+node dist/server.js
 ```
 
-### Device authentication
+### 3) Required production env vars
+At minimum:
 ```bash
-curl -s -X POST http://localhost:3000/api/device/auth \
-  -H "Content-Type: application/json" \
-  -d '{"device_id":"MAIN-DEMO-001","secret_key":"demo_secret_key_change_in_production_32chars"}'
-```
-
-### Fetch emergency contact (from ESP32)
-```bash
-curl -s http://localhost:3000/api/device/MAIN-DEMO-001/contact \
-  -H "x-device-id: MAIN-DEMO-001" \
-  -H "x-device-secret: demo_secret_key_change_in_production_32chars"
-```
-
-### Submit telemetry (from ESP32)
-```bash
-curl -s -X POST http://localhost:3000/api/device/telemetry \
-  -H "Content-Type: application/json" \
-  -H "x-device-id: MAIN-DEMO-001" \
-  -H "x-device-secret: demo_secret_key_change_in_production_32chars" \
-  -d '{
-    "helmet_id": "HELM-DEMO-001",
-    "helmet_worn": true,
-    "relay_state": true,
-    "helmet_battery_percent": 87,
-    "main_battery_percent": 73,
-    "latitude": 31.5204,
-    "longitude": 74.3587,
-    "speed_kmph": 35.2,
-    "gps_valid": true,
-    "signal_strength": -73,
-    "event_type": "heartbeat"
-  }'
-```
-
-### Submit emergency button event
-```bash
-curl -s -X POST http://localhost:3000/api/device/event \
-  -H "Content-Type: application/json" \
-  -H "x-device-id: MAIN-DEMO-001" \
-  -H "x-device-secret: demo_secret_key_change_in_production_32chars" \
-  -d '{
-    "event_type": "emergency_button",
-    "event_message": "SOS button pressed",
-    "metadata": {"lat": 31.5204, "lng": 74.3587}
-  }'
-```
-
-### Submit heartbeat
-```bash
-curl -s -X POST http://localhost:3000/api/device/heartbeat \
-  -H "Content-Type: application/json" \
-  -H "x-device-id: MAIN-DEMO-001" \
-  -H "x-device-secret: demo_secret_key_change_in_production_32chars" \
-  -d '{
-    "helmet_worn": true,
-    "helmet_battery_percent": 86,
-    "main_battery_percent": 72,
-    "relay_state": true,
-    "signal_strength": -75
-  }'
-```
-
----
-
-## ESP32 Example JSON Payloads
-
-### Main Unit → POST /api/device/telemetry
-```json
-{
-  "helmet_id": "HELM-001",
-  "helmet_worn": true,
-  "relay_state": true,
-  "helmet_battery_percent": 85.0,
-  "helmet_battery_voltage": 3.92,
-  "main_battery_percent": 72.0,
-  "main_battery_voltage": 3.85,
-  "latitude": 31.52045,
-  "longitude": 74.35869,
-  "speed_kmph": 35.2,
-  "gps_valid": true,
-  "signal_strength": -73,
-  "event_type": "heartbeat",
-  "event_message": "Periodic telemetry"
-}
-```
-
-### Main Unit → GET /api/device/:id/contact (response)
-```json
-{
-  "success": true,
-  "message": "Emergency contact retrieved",
-  "data": {
-    "id": "uuid",
-    "name": "Ahmed Ali",
-    "phone_number": "+923009876543",
-    "is_fallback": false
-  }
-}
-```
-
-### Main Unit → POST /api/device/event (accident)
-```json
-{
-  "event_type": "accident_confirmed",
-  "event_message": "Accelerometer threshold breached",
-  "metadata": {
-    "g_force": 12.4,
-    "lat": 31.5204,
-    "lng": 74.3587
-  }
-}
-```
-
----
-
-## Event Types
-
-| Event | Severity | Description |
-|-------|----------|-------------|
-| `heartbeat` | INFO | Periodic alive ping |
-| `helmet_status_changed` | INFO | Helmet put on/removed |
-| `relay_on` | INFO | Relay/ignition enabled |
-| `relay_off` | INFO | Relay/ignition disabled |
-| `emergency_button` | CRITICAL | SOS button pressed |
-| `emergency_sms_sent` | CRITICAL | SMS dispatched from device |
-| `low_battery_main` | WARNING | Main unit battery low |
-| `low_battery_helmet` | WARNING | Helmet battery low |
-| `accident_suspected` | CRITICAL | Possible accident detected |
-| `accident_confirmed` | CRITICAL | Accident confirmed |
-| `gps_fix_lost` | WARNING | GPS signal lost |
-| `gps_fix_restored` | INFO | GPS signal restored |
-
----
-
-## Deployment (Render / VPS)
-
-### Environment variables to set in production:
-```
 NODE_ENV=production
 DATABASE_URL=postgresql://...
-JWT_SECRET=<64+ char random string>
-DEVICE_TOKEN_SECRET=<64+ char random string>
+JWT_SECRET=...
+DEVICE_TOKEN_SECRET=...
 CORS_ORIGINS=https://yourdomain.com
 ```
 
-### Render (Web Service):
-1. Connect GitHub repo
-2. Build command: `npm install && npm run prisma:generate && npm run build`
-3. Start command: `npm run prisma:migrate:prod && node dist/server.js`
-4. Add `DATABASE_URL` as env var (use Render PostgreSQL add-on)
+---
 
-### VPS (Ubuntu):
-```bash
-# Install Node 20
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
+## Troubleshooting (common)
 
-# Clone, install, build
-npm ci
-npm run build
-npm run prisma:migrate:prod
-npm run prisma:seed
+### “Device is offline” but it’s sending data
+- Online is based on `main_devices.last_seen` vs `ONLINE_THRESHOLD_SECONDS` (90s).
+- Ensure device routes are calling telemetry/heartbeat and that requests pass auth.
 
-# Use PM2
-npm install -g pm2
-pm2 start dist/server.js --name smart-helmet-backend
-pm2 save
-pm2 startup
-```
+### “Anomaly detected” never goes down
+- Use the `final` object in API responses if present.
+- Ensure `ANOMALY_SCORE_THRESHOLD` is reasonable.
+- If a frontend uses multiple fields (`ai_result.status` and `suggestion.status`), it can get stuck; this repo includes a normalizer to fix that.
 
-### ngrok (testing):
-```bash
-ngrok http 3000
-# Use the HTTPS URL as your ESP32 backend URL
-```
+### Prisma migrate fails locally
+- Ensure your local `DATABASE_URL` user has permissions (create/alter tables, etc.).
 
 ---
 
-## Security Notes
+## Security notes
+- Never commit `.env`
+- Rotate device secrets after provisioning
+- Use HTTPS in production
+- Protect DB access (device secrets exist in DB)
 
-1. **Never commit `.env`** — use `.env.example` only
-2. **Rotate device secrets** after initial deployment via `POST /admin/devices/main/:id/rotate-secret`
-3. **Use HTTPS** in production — ngrok provides this for testing
-4. **Device secret keys** are stored in plaintext (not hashed) since they must be compared via `timingSafeEqual`. Protect your database.
-5. For production, consider moving device secrets to a secrets manager (AWS Secrets Manager, etc.)
-"# Smart-Helmet-" 
