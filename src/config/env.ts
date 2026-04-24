@@ -50,6 +50,9 @@ export const env = {
   THEFT_SPEED_KMPH_THRESHOLD: optionalInt("THEFT_SPEED_KMPH_THRESHOLD", 8),
   THEFT_MIN_SAMPLES: optionalInt("THEFT_MIN_SAMPLES", 3),
 
+  // Anomaly scoring (used to normalize AI outputs)
+  ANOMALY_SCORE_THRESHOLD: optionalInt("ANOMALY_SCORE_THRESHOLD", 50), // 0-100 scale
+
   LOG_LEVEL: optional("LOG_LEVEL", "info"),
   LOG_DIR: optional("LOG_DIR", "logs"),
 

@@ -9,6 +9,7 @@ import { env } from "./config/env";
 import { swaggerSpec } from "./config/swagger";
 import { logger } from "./utils/logger";
 import { globalRateLimiter } from "./middleware/rateLimiter";
+import { normalizeAiAnomaly } from "./middleware/normalizeAiAnomaly";
 import { notFound, errorHandler } from "./middleware/errorHandler";
 import routes from "./routes/index";
 
@@ -54,6 +55,9 @@ app.use(
 
 // ── Rate limiting ─────────────────────────────
 app.use(env.API_PREFIX, globalRateLimiter);
+
+// ── Response normalization (AI anomaly) ───────
+app.use(env.API_PREFIX, normalizeAiAnomaly);
 
 // ── Static files ──────────────────────────────
 app.use(express.static(path.join(__dirname, "../public")));
