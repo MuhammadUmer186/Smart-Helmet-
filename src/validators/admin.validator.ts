@@ -95,6 +95,8 @@ export const telemetryQuerySchema = paginationSchema.extend({
       "accident_confirmed",
       "gps_fix_lost",
       "gps_fix_restored",
+      "tariff_high_rate_load",
+      "theft_suspected",
     ])
     .optional(),
 });

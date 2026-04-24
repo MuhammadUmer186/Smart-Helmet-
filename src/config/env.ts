@@ -38,6 +38,18 @@ export const env = {
   RATE_LIMIT_MAX: optionalInt("RATE_LIMIT_MAX", 100),
   DEVICE_RATE_LIMIT_MAX: optionalInt("DEVICE_RATE_LIMIT_MAX", 500),
 
+  // Data retention & detection windows
+  DATA_RETENTION_WINDOW_MS: optionalInt("DATA_RETENTION_WINDOW_MS", 60 * 60 * 1000), // 1 hour
+
+  // Tariff-based alerting
+  TARIFF_HIGH_RATE_START_HOUR: optionalInt("TARIFF_HIGH_RATE_START_HOUR", 18), // 6 PM
+  TARIFF_HIGH_RATE_END_HOUR: optionalInt("TARIFF_HIGH_RATE_END_HOUR", 6), // 6 AM
+  HIGH_LOAD_WATTS_THRESHOLD: optionalInt("HIGH_LOAD_WATTS_THRESHOLD", 1500),
+
+  // Theft detection (uses last hour telemetry)
+  THEFT_SPEED_KMPH_THRESHOLD: optionalInt("THEFT_SPEED_KMPH_THRESHOLD", 8),
+  THEFT_MIN_SAMPLES: optionalInt("THEFT_MIN_SAMPLES", 3),
+
   LOG_LEVEL: optional("LOG_LEVEL", "info"),
   LOG_DIR: optional("LOG_DIR", "logs"),
 

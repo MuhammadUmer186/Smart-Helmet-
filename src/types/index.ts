@@ -26,7 +26,9 @@ export type EventType =
   | "accident_suspected"
   | "accident_confirmed"
   | "gps_fix_lost"
-  | "gps_fix_restored";
+  | "gps_fix_restored"
+  | "tariff_high_rate_load"
+  | "theft_suspected";
 
 export type Severity = "INFO" | "WARNING" | "CRITICAL";
 
@@ -43,6 +45,8 @@ export const EVENT_SEVERITY_MAP: Record<EventType, Severity> = {
   accident_confirmed: "CRITICAL",
   gps_fix_lost: "WARNING",
   gps_fix_restored: "INFO",
+  tariff_high_rate_load: "WARNING",
+  theft_suspected: "CRITICAL",
 };
 
 export const ONLINE_THRESHOLD_SECONDS = 90;

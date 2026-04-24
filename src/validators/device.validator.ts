@@ -38,6 +38,8 @@ export const telemetrySchema = z.object({
       "accident_confirmed",
       "gps_fix_lost",
       "gps_fix_restored",
+      "tariff_high_rate_load",
+      "theft_suspected",
     ])
     .optional(),
   event_message: z.string().max(500).optional(),
@@ -60,6 +62,8 @@ export const eventSchema = z.object({
     "accident_confirmed",
     "gps_fix_lost",
     "gps_fix_restored",
+    "tariff_high_rate_load",
+    "theft_suspected",
   ]),
   event_message: z.string().max(500).optional(),
   metadata: z.record(z.unknown()).optional(),

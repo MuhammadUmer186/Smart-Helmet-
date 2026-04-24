@@ -1,6 +1,7 @@
 import { prisma } from "../../config/database";
 import { EventType, Prisma } from "@prisma/client";
 import { EVENT_SEVERITY_MAP } from "../../types";
+import { maybeCreateTariffAlert, maybeCreateTheftAlert, pruneOldDeviceData } from "./detection.service";
 
 export const storeTelemetry = async (
   deviceId: string,
@@ -52,6 +53,11 @@ export const storeTelemetry = async (
       data: { last_seen: ts },
     }),
   ]);
+
+  // Keep only last hour data + generate alerts from last hour window
+  await pruneOldDeviceData(deviceId);
+  await maybeCreateTariffAlert(deviceId, telemetry);
+  await maybeCreateTheftAlert(deviceId);
 
   return telemetry;
 };

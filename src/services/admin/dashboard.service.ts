@@ -1,5 +1,6 @@
 import { prisma } from "../../config/database";
 import { ONLINE_THRESHOLD_SECONDS } from "../../types";
+import { computeAnomalyScore } from "../device/detection.service";
 
 export const getDashboardSummary = async () => {
   const onlineThreshold = new Date(Date.now() - ONLINE_THRESHOLD_SECONDS * 1000);
@@ -83,10 +84,13 @@ export const getDeviceStatuses = async () => {
     },
   });
 
-  return devices.map((d) => ({
+  const scores = await Promise.all(devices.map((d) => computeAnomalyScore(d.id)));
+
+  return devices.map((d, idx) => ({
     ...d,
     is_online: d.last_seen ? d.last_seen >= onlineThreshold : false,
     latest_state: d.telemetry[0] ?? null,
+    anomaly_score: scores[idx],
     telemetry: undefined,
   }));
 };
