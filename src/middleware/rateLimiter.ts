@@ -15,8 +15,13 @@ export const globalRateLimiter = rateLimit({
 export const deviceRateLimiter = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   max: env.DEVICE_RATE_LIMIT_MAX,
-  keyGenerator: (req) =>
-    (req.headers["x-device-id"] as string) ?? req.ip ?? "unknown",
+  keyGenerator: (req) => {
+    const raw = req.headers["x-device-id"];
+    const headerValue = Array.isArray(raw) ? raw[0] : raw;
+    const deviceId = typeof headerValue === "string" ? headerValue.trim() : "";
+
+    return deviceId || req.ip || "unknown";
+  },
   standardHeaders: true,
   legacyHeaders: false,
   handler: (_req, res) => {
@@ -26,7 +31,7 @@ export const deviceRateLimiter = rateLimit({
 
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 50,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (_req, res) => {
